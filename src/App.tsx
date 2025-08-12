@@ -81,29 +81,23 @@ function App() {
     );
   };
 
-  const deleteText = (id: string) => {
-    setTextElements(prev => prev.filter(el => el.id !== id));
-    setSelectedId(null);
-  };
-
-  const addKashida = () => {
-    if (selectedElement && selectedElement.language === 'arabic' && textareaRef) {
-  // rAF scheduler for smoother drag updates
+  // rAF scheduler for smoother drag updates (component scope)
   const rafPendingRef = React.useRef(false);
   const rafPosRef = React.useRef<{ x: number; y: number } | null>(null);
-  const scheduleDragUpdate = React.useCallback((newX: number, newY: number) => {
+  const scheduleDragUpdate = React.useCallback((newX: number, newY: number, id?: string) => {
     rafPosRef.current = { x: newX, y: newY };
     if (rafPendingRef.current) return;
     rafPendingRef.current = true;
     requestAnimationFrame(() => {
       const pos = rafPosRef.current;
       rafPendingRef.current = false;
-      if (!pos || !selectedId) return;
-      updateText(selectedId, { x: pos.x, y: pos.y });
+      const curId = id || selectedId;
+      if (!pos || !curId) return;
+      updateText(curId, { x: pos.x, y: pos.y });
       if (canvasRef.current) {
         const rectW = canvasRef.current.offsetWidth;
         const rectH = canvasRef.current.offsetHeight;
-        const node = canvasRef.current.querySelector(`[data-eid="${selectedId}"]`) as HTMLElement | null;
+        const node = canvasRef.current.querySelector(`[data-eid="${curId}"]`) as HTMLElement | null;
         const ew = node?.offsetWidth || 0;
         const eh = node?.offsetHeight || 0;
         const centerX = rectW / 2;
@@ -113,6 +107,13 @@ function App() {
       }
     });
   }, [selectedId]);
+  const deleteText = (id: string) => {
+    setTextElements(prev => prev.filter(el => el.id !== id));
+    setSelectedId(null);
+  };
+
+  const addKashida = () => {
+    if (selectedElement && selectedElement.language === 'arabic' && textareaRef) {
       const cursorPosition = textareaRef.selectionStart;
       const textBefore = selectedElement.text.substring(0, cursorPosition);
       const textAfter = selectedElement.text.substring(cursorPosition);
@@ -549,6 +550,8 @@ function App() {
               <div
                 key={element.id}
                 data-eid={element.id}
+                role="button"
+                tabIndex={0}
                 className={`absolute cursor-move select-none p-0 rounded transition-all ${
                   selectedId === element.id ? 'ring-2 ring-blue-500 bg-blue-50 bg-opacity-50' : 'hover:bg-gray-50 hover:bg-opacity-30'
                 } ${isDragging && selectedId === element.id ? 'z-50 scale-105' : 'z-10'}`}
