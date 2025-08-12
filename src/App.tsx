@@ -88,6 +88,31 @@ function App() {
 
   const addKashida = () => {
     if (selectedElement && selectedElement.language === 'arabic' && textareaRef) {
+  // rAF scheduler for smoother drag updates
+  const rafPendingRef = React.useRef(false);
+  const rafPosRef = React.useRef<{ x: number; y: number } | null>(null);
+  const scheduleDragUpdate = React.useCallback((newX: number, newY: number) => {
+    rafPosRef.current = { x: newX, y: newY };
+    if (rafPendingRef.current) return;
+    rafPendingRef.current = true;
+    requestAnimationFrame(() => {
+      const pos = rafPosRef.current;
+      rafPendingRef.current = false;
+      if (!pos || !selectedId) return;
+      updateText(selectedId, { x: pos.x, y: pos.y });
+      if (canvasRef.current) {
+        const rectW = canvasRef.current.offsetWidth;
+        const rectH = canvasRef.current.offsetHeight;
+        const node = canvasRef.current.querySelector(`[data-eid="${selectedId}"]`) as HTMLElement | null;
+        const ew = node?.offsetWidth || 0;
+        const eh = node?.offsetHeight || 0;
+        const centerX = rectW / 2;
+        const centerY = rectH / 2;
+        setShowVGuide(Math.abs((pos.x + ew / 2) - centerX) < 5);
+        setShowHGuide(Math.abs((pos.y + eh / 2) - centerY) < 5);
+      }
+    });
+  }, [selectedId]);
       const cursorPosition = textareaRef.selectionStart;
       const textBefore = selectedElement.text.substring(0, cursorPosition);
       const textAfter = selectedElement.text.substring(cursorPosition);
@@ -244,20 +269,7 @@ function App() {
       const deltaY = e.clientY - dragStart.y;
       const newX = dragStart.elementX + deltaX;
       const newY = dragStart.elementY + deltaY;
-      updateText(selectedId, { x: newX, y: newY });
-
-      // center guides relative to canvas (use element center, device-independent)
-      if (canvasRef.current) {
-        const rectW = canvasRef.current.offsetWidth;
-        const rectH = canvasRef.current.offsetHeight;
-        const node = canvasRef.current.querySelector(`[data-eid="${selectedId}"]`) as HTMLElement | null;
-        const ew = node?.offsetWidth || 0;
-        const eh = node?.offsetHeight || 0;
-        const centerX = rectW / 2;
-        const centerY = rectH / 2;
-        setShowVGuide(Math.abs((newX + ew / 2) - centerX) < 5);
-        setShowHGuide(Math.abs((newY + eh / 2) - centerY) < 5);
-      }
+      scheduleDragUpdate(newX, newY);
     }
   };
 
@@ -492,16 +504,7 @@ function App() {
               const deltaY = touch.clientY - dragStart.y;
               const newX = dragStart.elementX + deltaX;
               const newY = dragStart.elementY + deltaY;
-              updateText(selectedId, { x: newX, y: newY });
-              const rectW = canvasRef.current?.offsetWidth || 0;
-              const rectH = canvasRef.current?.offsetHeight || 0;
-              const node = canvasRef.current?.querySelector(`[data-eid="${selectedId}"]`) as HTMLElement | null;
-              const ew = node?.offsetWidth || 0;
-              const eh = node?.offsetHeight || 0;
-              const centerX = rectW / 2;
-              const centerY = rectH / 2;
-              setShowVGuide(Math.abs((newX + ew / 2) - centerX) < 5);
-              setShowHGuide(Math.abs((newY + eh / 2) - centerY) < 5);
+              scheduleDragUpdate(newX, newY);
             }}
             onTouchEnd={() => {
               setIsDragging(false);
@@ -550,8 +553,8 @@ function App() {
                   selectedId === element.id ? 'ring-2 ring-blue-500 bg-blue-50 bg-opacity-50' : 'hover:bg-gray-50 hover:bg-opacity-30'
                 } ${isDragging && selectedId === element.id ? 'z-50 scale-105' : 'z-10'}`}
                 style={{
-                  left: element.x,
-                  top: element.y,
+                  transform: `translate(${element.x}px, ${element.y}px)`,
+                  willChange: 'transform',
                   fontSize: element.fontSize,
                   color: element.color,
                   direction: element.language === 'arabic' ? 'rtl' : 'ltr',
