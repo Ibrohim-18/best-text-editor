@@ -643,7 +643,6 @@ function App() {
                     {element.text}
                   </>
                 )}
-              >
               </div>
             ))}
 
