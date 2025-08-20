@@ -12,6 +12,12 @@ function App() {
   const [storedFonts, setStoredFonts] = useState<{ name: string; dataUrl: string; }[]>([]);
   const [exportScale, setExportScale] = useState<number>(2);
   const canvasRef = React.useRef<HTMLDivElement | null>(null);
+  const vGuideRef = React.useRef<HTMLDivElement | null>(null);
+  const hGuideRef = React.useRef<HTMLDivElement | null>(null);
+  const dragNodeRef = React.useRef<HTMLElement | null>(null);
+  const dragIdRef = React.useRef<string | null>(null);
+  const latestPosRef = React.useRef<{ x: number; y: number } | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [newFontName, setNewFontName] = useState<string>('');
   const [showFontModal, setShowFontModal] = useState(false); // modal exists; button can be hidden
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -212,6 +218,60 @@ function App() {
     (ctx as any).imageSmoothingQuality = 'high';
 
     // Фон (цветной или прозрачный)
+  // Pointer-based dragging for ultimate smoothness
+  React.useEffect(() => {
+    const root = canvasRef.current;
+    if (!root) return;
+
+    const onDown = (e: PointerEvent) => {
+      const target = (e.target as HTMLElement).closest('[data-eid]') as HTMLElement | null;
+      if (!target) return;
+      (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+      dragNodeRef.current = target as HTMLElement;
+      dragIdRef.current = target.getAttribute('data-eid');
+      const id = dragIdRef.current;
+      if (!id) return;
+      const el = textElements.find((x) => x.id === id);
+      if (!el) return;
+      setIsDragging(true);
+      setSelectedId(id);
+      latestPosRef.current = { x: el.x, y: el.y };
+      dragStart.x = e.clientX; dragStart.y = e.clientY; dragStart.elementX = el.x; dragStart.elementY = el.y;
+    };
+
+    const onMove = (e: PointerEvent) => {
+      if (!isDragging || !dragIdRef.current) return;
+      const deltaX = e.clientX - dragStart.x;
+      const deltaY = e.clientY - dragStart.y;
+      const nx = dragStart.elementX + deltaX;
+      const ny = dragStart.elementY + deltaY;
+      latestPosRef.current = { x: nx, y: ny };
+      // Ultra-fast visual feedback: move DOM directly via transform
+      if (dragNodeRef.current) {
+        dragNodeRef.current.style.transform = `translate(${nx}px, ${ny}px)`;
+      }
+    };
+
+    const onUp = () => {
+      if (!isDragging || !dragIdRef.current) return;
+      setIsDragging(false);
+      const id = dragIdRef.current;
+      const pos = latestPosRef.current;
+      dragIdRef.current = null;
+      dragNodeRef.current = null;
+      if (id && pos) updateText(id, { x: pos.x, y: pos.y });
+      setShowVGuide(false); setShowHGuide(false);
+    };
+
+    root.addEventListener('pointerdown', onDown);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      root.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, [textElements]);
     if (canvasBackground !== 'transparent') {
       ctx.fillStyle = canvasBackground;
       ctx.fillRect(0, 0, width, height);
@@ -518,30 +578,18 @@ function App() {
               <>
                 {/* Vertical */}
                 <div
+                  ref={vGuideRef}
                   style={{
-                    position: 'absolute',
-                    left: '50%',
-                    top: 0,
-                    bottom: 0,
-                    width: '1px',
-                    backgroundColor: showVGuide ? 'red' : 'transparent',
-                    transform: 'translateX(-0.5px)',
-                    pointerEvents: 'none',
-                    zIndex: 5,
+                    position: 'absolute', left: '50%', top: 0, bottom: 0, width: '1px',
+                    backgroundColor: showVGuide ? 'red' : 'transparent', transform: 'translateX(-0.5px)', pointerEvents: 'none', zIndex: 5,
                   }}
                 />
                 {/* Horizontal */}
                 <div
+                  ref={hGuideRef}
                   style={{
-                    position: 'absolute',
-                    top: '50%',
-                    left: 0,
-                    right: 0,
-                    height: '1px',
-                    backgroundColor: showHGuide ? 'red' : 'transparent',
-                    transform: 'translateY(-0.5px)',
-                    pointerEvents: 'none',
-                    zIndex: 5,
+                    position: 'absolute', top: '50%', left: 0, right: 0, height: '1px',
+                    backgroundColor: showHGuide ? 'red' : 'transparent', transform: 'translateY(-0.5px)', pointerEvents: 'none', zIndex: 5,
                   }}
                 />
               </>
@@ -565,21 +613,38 @@ function App() {
                   maxWidth: '400px',
                   lineHeight: element.language === 'arabic' ? '1.8' : '1.6'
                 }}
-                onMouseDown={(e) => handleMouseDown(e, element.id)}
                 onClick={() => setSelectedId(element.id)}
-              >
-                {selectedId === element.id && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      deleteText(element.id);
-                    }}
-                    className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 text-xs hover:bg-red-600 z-10"
-                  >
-                    ✕
-                  </button>
+                onDoubleClick={() => {
+                  setEditingId(element.id);
+                  setSelectedId(element.id);
+                }}
+                {editingId === element.id ? (
+                  <textarea
+                    autoFocus
+                    value={element.text}
+                    onChange={(e) => updateText(element.id, { text: e.target.value })}
+                    onBlur={() => setEditingId(null)}
+                    className="min-w-[120px] max-w-[400px] p-1 bg-white/80 text-black rounded border border-gray-400 text-sm"
+                    rows={Math.max(2, Math.min(6, element.text.split('\n').length))}
+                  />
+                ) : (
+                  <>
+                    {selectedId === element.id && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteText(element.id);
+                        }}
+                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 text-xs hover:bg-red-600 z-10"
+                      >
+                        ✕
+                      </button>
+                    )}
+                    {element.text}
+                  </>
                 )}
-                {element.text}
+              >
+
               </div>
             ))}
 
