@@ -617,7 +617,7 @@ function App() {
                 onDoubleClick={() => {
                   setEditingId(element.id);
                   setSelectedId(element.id);
-                }}
+                }}>
                 {editingId === element.id ? (
                   <textarea
                     autoFocus
